@@ -231,7 +231,7 @@ function Nav({page,setPage}) {
   );
 }
 
-function Home({setPage,businesses,products}) {
+function Home({setPage,businesses,products,onSelectProduct}) {
   const totalRaised=businesses.reduce((s,b)=>s+(b.amount_raised||0),0);
   const totalRepaid=businesses.reduce((s,b)=>s+(b.total_repaid||0),0);
   return (
@@ -294,7 +294,7 @@ function Home({setPage,businesses,products}) {
               <Btn onClick={()=>setPage("market")} variant="outline">View All</Btn>
             </div>
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))",gap:20}}>
-              {products.slice(0,4).map(p=><ProductCard key={p.id} p={p}/>)}
+              {products.slice(0,4).map(p=><ProductCard key={p.id} p={p} onSelect={onSelectProduct}/>)}
             </div>
           </div>
         </div>
@@ -303,12 +303,12 @@ function Home({setPage,businesses,products}) {
   );
 }
 
-function ProductCard({p}) {
+function ProductCard({p, onSelect}) {
   const typeIcons={Physical:"📦",Digital:"💻",Service:"🛠️",Food:"🍽️"};
   const typeColors={Physical:C.primary,Digital:"#6366f1",Service:"#e67e22",Food:"#e91e8c"};
   const tc=typeColors[p.type]||C.primary;
   return (
-    <Card style={{borderRadius:16,overflow:"hidden",cursor:"pointer"}}>
+    <Card onClick={()=>onSelect&&onSelect(p)} style={{borderRadius:16,overflow:"hidden",cursor:"pointer"}}>
       <div style={{height:180,background:`linear-gradient(135deg,${tc}18,${tc}08)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:56,position:"relative"}}>
         {p.image_url?<img src={p.image_url} alt={p.name} style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<span>{typeIcons[p.type]||"🛍️"}</span>}
         <div style={{position:"absolute",top:12,left:12}}><Tag color={tc}>{p.type}</Tag></div>
@@ -317,9 +317,145 @@ function ProductCard({p}) {
         <h3 style={{fontFamily:"Playfair Display",fontWeight:700,fontSize:16,marginBottom:4}}>{p.name}</h3>
         <p style={{fontSize:11,color:C.muted,marginBottom:10}}>by {p.seller_name}{p.location?` · ${p.location}`:""}</p>
         <p style={{fontSize:12,color:"rgba(13,31,22,0.65)",lineHeight:1.6,marginBottom:12}}>{(p.description||"").slice(0,80)}{(p.description||"").length>80?"...":""}</p>
-        <div style={{fontFamily:"Playfair Display",fontWeight:800,fontSize:20,color:C.primary}}>R{Number(p.price).toLocaleString("en-ZA")}</div>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div style={{fontFamily:"Playfair Display",fontWeight:800,fontSize:20,color:C.primary}}>R{Number(p.price).toLocaleString("en-ZA")}</div>
+          <span style={{fontSize:12,color:C.primary,fontWeight:600}}>View →</span>
+        </div>
       </div>
     </Card>
+  );
+}
+
+// ── PRODUCT DETAIL PAGE ───────────────────────────────────
+function ProductDetail({p, setPage}) {
+  const typeColors={Physical:C.primary,Digital:"#6366f1",Service:"#e67e22",Food:"#e91e8c"};
+  const tc=typeColors[p.type]||C.primary;
+  const docList=p.doc_urls?p.doc_urls.split(",").filter(Boolean):[];
+
+  const handleWhatsApp=()=>{
+    const msg=encodeURIComponent(`Hi ${p.seller_name}, I saw your listing on Hluma and I am interested in: *${p.name}* (R${Number(p.price).toLocaleString("en-ZA")}). Please send me more details.`);
+    const num=(p.whatsapp||p.phone||"").replace(/[\s\-()]/g,"").replace(/^0/,"+27");
+    window.open(`https://wa.me/${num}?text=${msg}`,"_blank");
+  };
+
+  const handlePayFast=()=>{
+    const pf=CONFIG.payfast;
+    const params={
+      merchant_id:pf.merchantId, merchant_key:pf.merchantKey,
+      return_url:window.location.href, cancel_url:window.location.href,
+      notify_url:pf.notifyUrl, name_first:"Buyer", name_last:".",
+      m_payment_id:`HL-${Date.now()}`,
+      amount:Number(p.price).toFixed(2),
+      item_name:`Hluma: ${p.name}`,
+      custom_str1:String(p.id),
+    };
+    const host=pf.sandbox?"https://sandbox.payfast.co.za":"https://www.payfast.co.za";
+    const form=document.createElement("form");
+    form.method="POST"; form.action=`${host}/eng/process`;
+    Object.entries(params).forEach(([k,v])=>{
+      const i=document.createElement("input");
+      i.type="hidden"; i.name=k; i.value=v; form.appendChild(i);
+    });
+    document.body.appendChild(form); form.submit();
+  };
+
+  return (
+    <div style={{paddingTop:66,background:C.cream,minHeight:"100vh"}}>
+      <div style={{maxWidth:1100,margin:"0 auto",padding:"24px 32px 0"}}>
+        <button onClick={()=>setPage("market")} style={{background:"none",border:"none",color:C.primary,fontSize:13,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:6}}>
+          ← Back to Marketplace
+        </button>
+      </div>
+      <div style={{maxWidth:1100,margin:"0 auto",padding:"24px 32px 60px",display:"grid",gridTemplateColumns:"1fr 1fr",gap:40}}>
+
+        {/* LEFT — Image + Docs */}
+        <div style={{display:"flex",flexDirection:"column",gap:16}}>
+          <div style={{borderRadius:20,overflow:"hidden",background:`linear-gradient(135deg,${tc}18,${tc}08)`,height:380,display:"flex",alignItems:"center",justifyContent:"center",border:`1px solid ${C.border}`}}>
+            {p.image_url
+              ?<img src={p.image_url} alt={p.name} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+              :<span style={{fontSize:80}}>{{Physical:"📦",Digital:"💻",Service:"🛠️",Food:"🍽️"}[p.type]||"🛍️"}</span>
+            }
+          </div>
+          {docList.length>0&&(
+            <div style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:16,padding:20}}>
+              <h3 style={{fontFamily:"Playfair Display",fontWeight:700,fontSize:16,color:C.dark,marginBottom:14}}>📎 Catalogues & Documents</h3>
+              <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                {docList.map((url,i)=>{
+                  const filename=decodeURIComponent(url.split("/").pop()).replace(/^\d+-/,"").replace(/-/g," ");
+                  const isImage=/\.(jpg|jpeg|png|webp|gif)$/i.test(url);
+                  return (
+                    <a key={i} href={url} target="_blank" rel="noreferrer"
+                      style={{display:"flex",alignItems:"center",gap:12,background:C.cream,border:`1px solid ${C.border}`,borderRadius:10,padding:"12px 16px",textDecoration:"none",transition:"all .2s"}}
+                      onMouseEnter={e=>e.currentTarget.style.borderColor=C.primary}
+                      onMouseLeave={e=>e.currentTarget.style.borderColor=C.border}
+                    >
+                      <span style={{fontSize:24}}>{isImage?"🖼️":"📄"}</span>
+                      <div style={{flex:1}}>
+                        <p style={{fontSize:13,fontWeight:600,color:C.dark}}>{filename||`Document ${i+1}`}</p>
+                        <p style={{fontSize:11,color:C.muted}}>Click to view / download</p>
+                      </div>
+                      <span style={{fontSize:18,color:C.primary}}>↓</span>
+                    </a>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* RIGHT — Details + Actions */}
+        <div style={{display:"flex",flexDirection:"column",gap:20}}>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+            <Tag color={tc}>{p.type}</Tag>
+            {p.category&&<Tag color={C.mid}>{p.category}</Tag>}
+            {p.status==="live"&&<Tag color={C.primary}>✓ Verified Listing</Tag>}
+          </div>
+
+          <div>
+            <h1 style={{fontFamily:"Playfair Display",fontWeight:800,fontSize:34,color:C.dark,lineHeight:1.15,marginBottom:8}}>{p.name}</h1>
+            <p style={{fontSize:13,color:C.muted}}>Listed by <strong style={{color:C.dark}}>{p.seller_name}</strong>{p.business_name?` · ${p.business_name}`:""}{p.location?` · ${p.location}`:""}</p>
+          </div>
+
+          <div style={{background:`linear-gradient(135deg,${C.mint},#E8F8ED)`,border:`1px solid ${C.border}`,borderRadius:16,padding:"20px 24px"}}>
+            <p style={{fontSize:12,color:C.muted,marginBottom:4}}>Price</p>
+            <div style={{fontFamily:"Playfair Display",fontWeight:800,fontSize:40,color:C.primary}}>R{Number(p.price).toLocaleString("en-ZA")}</div>
+            {p.type==="Service"&&<p style={{fontSize:12,color:C.muted,marginTop:4}}>per session</p>}
+            {p.delivery&&<p style={{fontSize:12,color:C.primary,marginTop:6,fontWeight:600}}>✓ Delivery available</p>}
+          </div>
+
+          <div style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:16,padding:"20px 24px"}}>
+            <h3 style={{fontFamily:"Playfair Display",fontWeight:700,fontSize:17,color:C.dark,marginBottom:12}}>About this product</h3>
+            <p style={{fontSize:14,color:"rgba(13,31,22,0.75)",lineHeight:1.8,whiteSpace:"pre-wrap"}}>{p.description}</p>
+          </div>
+
+          <div style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:16,padding:"20px 24px"}}>
+            <h3 style={{fontFamily:"Playfair Display",fontWeight:700,fontSize:17,color:C.dark,marginBottom:14}}>Seller Information</h3>
+            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              {[["👤 Name",p.seller_name],["🏢 Business",p.business_name],["📍 Location",p.location],["📧 Email",p.email]].filter(([,v])=>v).map(([l,v])=>(
+                <div key={l} style={{display:"flex",gap:12,fontSize:13}}>
+                  <span style={{color:C.muted,minWidth:100}}>{l}</span>
+                  <span style={{color:C.dark,fontWeight:500}}>{v}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div style={{display:"flex",flexDirection:"column",gap:12}}>
+            <button onClick={handleWhatsApp}
+              style={{background:"#25D366",color:C.white,border:"none",borderRadius:14,padding:"16px 24px",fontSize:15,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:10,fontFamily:"Plus Jakarta Sans"}}>
+              <span style={{fontSize:20}}>💬</span> WhatsApp Seller to Order
+            </button>
+            <button onClick={handlePayFast}
+              style={{background:C.primary,color:C.white,border:"none",borderRadius:14,padding:"16px 24px",fontSize:15,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:10,fontFamily:"Plus Jakarta Sans"}}>
+              <span style={{fontSize:20}}>💳</span> Buy Now via PayFast — R{Number(p.price).toLocaleString("en-ZA")}
+            </button>
+            <p style={{fontSize:11,color:C.muted,textAlign:"center",lineHeight:1.6}}>
+              PayFast is a secure SA payment gateway. Or WhatsApp the seller to arrange EFT / cash on delivery.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -344,7 +480,7 @@ function BizCard({b,setPage}) {
   );
 }
 
-function Marketplace({products,loading,setPage}) {
+function Marketplace({products,loading,setPage,onSelect}) {
   const [filter,setFilter]=useState("All");
   const [search,setSearch]=useState("");
   const types=["All","Physical","Digital","Service","Food"];
@@ -371,7 +507,7 @@ function Marketplace({products,loading,setPage}) {
             <Btn onClick={()=>setPage("sell")}>List Your Product</Btn>
           </div>
           :<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))",gap:22}}>
-            {filtered.map(p=><ProductCard key={p.id} p={p}/>)}
+            {filtered.map(p=><ProductCard key={p.id} p={p} onSelect={onSelect}/>)}
           </div>
         }
       </div>
@@ -840,7 +976,14 @@ export default function App() {
   const [investments,setInvestments]=useState([]);
   const [loading,setLoading]=useState(true);
   const [toast,setToast]=useState(null);
+  const [selectedProduct,setSelectedProduct]=useState(null);
+
   const addToast=(msg,type="info")=>setToast({msg,type});
+
+  const handleSelectProduct=(p)=>{
+    setSelectedProduct(p);
+    setPage("product");
+  };
 
   useEffect(()=>{
     const load=async()=>{
@@ -861,12 +1004,13 @@ export default function App() {
 
   const renderPage=()=>{
     switch(page){
-      case "market": return <Marketplace products={products} loading={loading} setPage={setPage}/>;
+      case "product": return selectedProduct ? <ProductDetail p={selectedProduct} setPage={setPage}/> : <Marketplace products={products} loading={loading} setPage={setPage} onSelect={handleSelectProduct}/>;
+      case "market": return <Marketplace products={products} loading={loading} setPage={setPage} onSelect={handleSelectProduct}/>;
       case "fund":   return <FundPage businesses={businesses} loading={loading} setPage={setPage}/>;
       case "sell":   return <SellForm addToast={addToast} setPage={setPage}/>;
       case "apply":  return <SellForm addToast={addToast} setPage={setPage}/>;
       case "dash":   return <Dashboard businesses={businesses} products={products} investments={investments}/>;
-      default:       return <Home setPage={setPage} businesses={businesses} products={products}/>;
+      default:       return <Home setPage={setPage} businesses={businesses} products={products} onSelectProduct={handleSelectProduct}/>;
     }
   };
 
