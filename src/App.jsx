@@ -231,7 +231,7 @@ function Nav({page,setPage}) {
   );
 }
 
-function Home({setPage,businesses,products,onSelectProduct}) {
+function Home({setPage,businesses,products,onSelectProduct,onSelectBiz}) {
   const totalRaised=businesses.reduce((s,b)=>s+(b.amount_raised||0),0);
   const totalRepaid=businesses.reduce((s,b)=>s+(b.total_repaid||0),0);
   return (
@@ -459,10 +459,10 @@ function ProductDetail({p, setPage}) {
   );
 }
 
-function BizCard({b,setPage}) {
+function BizCard({b, onSelect}) {
   const pct=Math.min(Math.round(((b.amount_raised||0)/b.funding_goal)*100),100);
   return (
-    <Card style={{padding:26}}>
+    <Card onClick={()=>onSelect&&onSelect(b)} style={{padding:26,cursor:"pointer"}}>
       <Tag color={C.primary}>{b.category}</Tag>
       <h3 style={{fontFamily:"Playfair Display",fontWeight:700,fontSize:19,margin:"12px 0 4px"}}>{b.project_title}</h3>
       <p style={{fontSize:13,color:"rgba(13,31,22,0.62)",marginBottom:16,lineHeight:1.6}}>{(b.description||b.biz_desc||"").slice(0,120)}...</p>
@@ -475,8 +475,209 @@ function BizCard({b,setPage}) {
           <div style={{width:`${pct}%`,height:"100%",background:C.primary,borderRadius:100}}/>
         </div>
       </div>
-      <Btn onClick={()=>setPage&&setPage("fund")} style={{width:"100%",justifyContent:"center"}}>Fund from R50</Btn>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <span style={{fontSize:13,color:C.primary,fontWeight:600}}>View & Fund →</span>
+        <span style={{fontSize:12,color:C.muted}}>{b.revenue_share_pct||0}% rev share</span>
+      </div>
     </Card>
+  );
+}
+
+// ── BUSINESS DETAIL PAGE ──────────────────────────────────
+function BizDetail({b, setPage, addToast}) {
+  const pct=Math.min(Math.round(((b.amount_raised||0)/b.funding_goal)*100),100);
+  const [amount,setAmount]=useState("");
+  const [name,setName]=useState("");
+  const [email,setEmail]=useState("");
+  const docList=b.doc_urls?b.doc_urls.split(",").filter(Boolean):[];
+  const imgList=b.image_urls?b.image_urls.split(",").filter(Boolean):[];
+  const estMonths=b.estimated_repayment_months;
+  const monthlyPool=b.monthly_revenue&&b.revenue_share_pct?Math.round(Number(b.monthly_revenue)*(Number(b.revenue_share_pct)/100)):null;
+
+  const handleWhatsApp=()=>{
+    const msg=encodeURIComponent(`Hi, I saw your project *${b.project_title}* on Hluma and I am interested in funding it. Can we discuss?`);
+    const num=(b.phone||"").replace(/[\s\-()]/g,"").replace(/^0/,"+27");
+    window.open(`https://wa.me/${num}?text=${msg}`,"_blank");
+  };
+
+  const handlePayFast=()=>{
+    if(!amount||Number(amount)<50){addToast("Minimum investment is R50","error");return;}
+    if(!name||!email){addToast("Please enter your name and email","error");return;}
+    const pf=CONFIG.payfast;
+    const params={
+      merchant_id:pf.merchantId, merchant_key:pf.merchantKey,
+      return_url:window.location.href, cancel_url:window.location.href,
+      notify_url:pf.notifyUrl,
+      name_first:name.split(" ")[0], name_last:name.split(" ").slice(1).join(" ")||".",
+      email_address:email,
+      m_payment_id:`HL-INV-${Date.now()}`,
+      amount:Number(amount).toFixed(2),
+      item_name:`Hluma Fund: ${b.project_title}`,
+      item_description:`Revenue share investment — ${b.revenue_share_pct}% monthly`,
+      custom_str1:String(b.id),
+      custom_str2:email,
+    };
+    const host=pf.sandbox?"https://sandbox.payfast.co.za":"https://www.payfast.co.za";
+    const form=document.createElement("form");
+    form.method="POST"; form.action=`${host}/eng/process`;
+    Object.entries(params).forEach(([k,v])=>{
+      const i=document.createElement("input");
+      i.type="hidden"; i.name=k; i.value=v; form.appendChild(i);
+    });
+    document.body.appendChild(form); form.submit();
+  };
+
+  return (
+    <div style={{paddingTop:66,background:C.cream,minHeight:"100vh"}}>
+      <div style={{maxWidth:1100,margin:"0 auto",padding:"24px 32px 0"}}>
+        <button onClick={()=>setPage("fund")} style={{background:"none",border:"none",color:C.primary,fontSize:13,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:6}}>
+          ← Back to Fund a Biz
+        </button>
+      </div>
+
+      <div style={{maxWidth:1100,margin:"0 auto",padding:"24px 32px 60px",display:"grid",gridTemplateColumns:"1fr 1fr",gap:40}}>
+
+        {/* LEFT — Images + Docs */}
+        <div style={{display:"flex",flexDirection:"column",gap:16}}>
+          {/* Project images */}
+          {imgList.length>0?(
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              {imgList.map((url,i)=>(
+                <div key={i} style={{borderRadius:16,overflow:"hidden",height:i===0?320:160,border:`1px solid ${C.border}`}}>
+                  <img src={url} alt={`${b.project_title} ${i+1}`} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                </div>
+              ))}
+            </div>
+          ):(
+            <div style={{borderRadius:16,height:280,background:`linear-gradient(135deg,${C.mint},#E8F8ED)`,display:"flex",alignItems:"center",justifyContent:"center",border:`1px solid ${C.border}`}}>
+              <span style={{fontSize:80}}>🌱</span>
+            </div>
+          )}
+
+          {/* Documents */}
+          {docList.length>0&&(
+            <div style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:16,padding:20}}>
+              <h3 style={{fontFamily:"Playfair Display",fontWeight:700,fontSize:16,color:C.dark,marginBottom:14}}>📎 Business Documents</h3>
+              <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                {docList.map((url,i)=>{
+                  const filename=decodeURIComponent(url.split("/").pop()).replace(/^\d+-/,"").replace(/-/g," ");
+                  return (
+                    <a key={i} href={url} target="_blank" rel="noreferrer"
+                      style={{display:"flex",alignItems:"center",gap:12,background:C.cream,border:`1px solid ${C.border}`,borderRadius:10,padding:"12px 16px",textDecoration:"none",transition:"all .2s"}}
+                      onMouseEnter={e=>e.currentTarget.style.borderColor=C.primary}
+                      onMouseLeave={e=>e.currentTarget.style.borderColor=C.border}
+                    >
+                      <span style={{fontSize:24}}>📄</span>
+                      <div style={{flex:1}}>
+                        <p style={{fontSize:13,fontWeight:600,color:C.dark}}>{filename||`Document ${i+1}`}</p>
+                        <p style={{fontSize:11,color:C.muted}}>Click to view / download</p>
+                      </div>
+                      <span style={{fontSize:18,color:C.primary}}>↓</span>
+                    </a>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* RIGHT — Details + Fund */}
+        <div style={{display:"flex",flexDirection:"column",gap:20}}>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+            {b.category&&<Tag color={C.primary}>{b.category}</Tag>}
+            {b.status==="live"&&<Tag color={C.mid}>✓ Verified</Tag>}
+          </div>
+
+          <div>
+            <h1 style={{fontFamily:"Playfair Display",fontWeight:800,fontSize:34,color:C.dark,lineHeight:1.15,marginBottom:8}}>{b.project_title}</h1>
+            <p style={{fontSize:13,color:C.muted}}>by <strong style={{color:C.dark}}>{b.full_name}</strong>{b.business_name?` · ${b.business_name}`:""}{b.location?` · ${b.location}`:""}</p>
+          </div>
+
+          {/* Funding progress */}
+          <div style={{background:`linear-gradient(135deg,${C.forest},${C.primary})`,borderRadius:16,padding:"20px 24px",color:C.white}}>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
+              <span style={{fontFamily:"Playfair Display",fontWeight:800,fontSize:28}}>R{(b.amount_raised||0).toLocaleString("en-ZA")}</span>
+              <span style={{fontSize:13,color:"rgba(255,255,255,0.7)"}}>of R{Number(b.funding_goal).toLocaleString("en-ZA")} goal</span>
+            </div>
+            <div style={{background:"rgba(255,255,255,0.2)",borderRadius:100,height:8,marginBottom:8}}>
+              <div style={{width:`${pct}%`,height:"100%",background:C.pale,borderRadius:100,transition:"width .5s"}}/>
+            </div>
+            <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"rgba(255,255,255,0.7)"}}>
+              <span>{pct}% funded</span>
+              <span>{b.backer_count||0} investors</span>
+            </div>
+          </div>
+
+          {/* Key metrics */}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+            {[
+              ["💰 Revenue Share",`${b.revenue_share_pct||0}% monthly`],
+              ["🎯 Return Target",`${b.repayment_multiple||1.5}x (${((b.repayment_multiple||1.5)-1)*100}% profit)`],
+              ["📅 Est. Payback",estMonths?`~${estMonths} months`:"TBC"],
+              ["💵 Monthly Pool",monthlyPool?`R${monthlyPool.toLocaleString("en-ZA")}`:"TBC"],
+            ].map(([l,v])=>(
+              <div key={l} style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:12,padding:"14px 16px"}}>
+                <p style={{fontSize:11,color:C.muted,marginBottom:4}}>{l}</p>
+                <p style={{fontSize:14,fontWeight:700,color:C.dark}}>{v}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Description */}
+          <div style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:16,padding:"20px 24px"}}>
+            <h3 style={{fontFamily:"Playfair Display",fontWeight:700,fontSize:17,color:C.dark,marginBottom:12}}>About this business</h3>
+            <p style={{fontSize:14,color:"rgba(13,31,22,0.75)",lineHeight:1.8,whiteSpace:"pre-wrap"}}>{b.description||b.biz_desc}</p>
+          </div>
+
+          {/* Use of funds */}
+          {b.use_of_funds&&(
+            <div style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:16,padding:"20px 24px"}}>
+              <h3 style={{fontFamily:"Playfair Display",fontWeight:700,fontSize:17,color:C.dark,marginBottom:12}}>Use of Funds</h3>
+              <p style={{fontSize:14,color:"rgba(13,31,22,0.75)",lineHeight:1.8}}>{b.use_of_funds}</p>
+            </div>
+          )}
+
+          {/* Invest form */}
+          <div style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:16,padding:"24px"}}>
+            <h3 style={{fontFamily:"Playfair Display",fontWeight:700,fontSize:18,color:C.dark,marginBottom:16}}>Fund this Business</h3>
+            <div style={{display:"flex",flexDirection:"column",gap:12}}>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+                <div>
+                  <label style={{fontSize:12,color:C.muted,marginBottom:5,display:"block"}}>Your Name *</label>
+                  <input value={name} onChange={e=>setName(e.target.value)} placeholder="Full name" style={{background:C.cream,border:`1px solid ${C.border}`,borderRadius:10,padding:"11px 14px",width:"100%",fontSize:13,color:C.dark,fontFamily:"Plus Jakarta Sans"}}/>
+                </div>
+                <div>
+                  <label style={{fontSize:12,color:C.muted,marginBottom:5,display:"block"}}>Your Email *</label>
+                  <input value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@email.com" type="email" style={{background:C.cream,border:`1px solid ${C.border}`,borderRadius:10,padding:"11px 14px",width:"100%",fontSize:13,color:C.dark,fontFamily:"Plus Jakarta Sans"}}/>
+                </div>
+              </div>
+              <div>
+                <label style={{fontSize:12,color:C.muted,marginBottom:5,display:"block"}}>Investment Amount (R) — minimum R50</label>
+                <input type="number" min="50" value={amount} onChange={e=>setAmount(e.target.value)} placeholder="e.g. 500"
+                  style={{background:C.cream,border:`1px solid ${C.border}`,borderRadius:10,padding:"11px 14px",width:"100%",fontSize:13,color:C.dark,fontFamily:"Plus Jakarta Sans"}}/>
+              </div>
+              {amount&&Number(amount)>=50&&(
+                <div style={{background:`linear-gradient(135deg,${C.mint},#E8F8ED)`,borderRadius:10,padding:"12px 16px",fontSize:12,color:C.primary}}>
+                  Your R{Number(amount).toLocaleString("en-ZA")} investment earns monthly revenue share payments until you receive R{(Number(amount)*Number(b.repayment_multiple||1.5)).toLocaleString("en-ZA")} back.
+                </div>
+              )}
+              <button onClick={handlePayFast}
+                style={{background:C.primary,color:C.white,border:"none",borderRadius:14,padding:"16px 24px",fontSize:15,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:10,fontFamily:"Plus Jakarta Sans"}}>
+                <span style={{fontSize:20}}>💳</span> Invest via PayFast
+              </button>
+              <button onClick={handleWhatsApp}
+                style={{background:"#25D366",color:C.white,border:"none",borderRadius:14,padding:"14px 24px",fontSize:14,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:10,fontFamily:"Plus Jakarta Sans"}}>
+                <span style={{fontSize:18}}>💬</span> WhatsApp the Founder
+              </button>
+              <p style={{fontSize:11,color:C.muted,textAlign:"center",lineHeight:1.6}}>
+                Minimum investment R50. Payments processed securely via PayFast.<br/>
+                Revenue share paid monthly once business hits targets.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -867,7 +1068,7 @@ function SellForm({addToast,setPage}) {
   );
 }
 
-function FundPage({businesses,loading,setPage}) {
+function FundPage({businesses,loading,setPage,onSelect}) {
   const [filter,setFilter]=useState("All");
   const cats=["All",...new Set(businesses.map(b=>b.category).filter(Boolean))];
   const filtered=filter==="All"?businesses:businesses.filter(b=>b.category===filter);
@@ -890,7 +1091,7 @@ function FundPage({businesses,loading,setPage}) {
             <Btn onClick={()=>setPage("apply")}>Apply for Funding</Btn>
           </div>
           :<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(320px,1fr))",gap:22}}>
-            {filtered.map(b=><BizCard key={b.id} b={b} setPage={setPage}/>)}
+            {filtered.map(b=><BizCard key={b.id} b={b} onSelect={onSelect}/>)}
           </div>
         }
       </div>
@@ -980,13 +1181,12 @@ export default function App() {
   const [loading,setLoading]=useState(true);
   const [toast,setToast]=useState(null);
   const [selectedProduct,setSelectedProduct]=useState(null);
+  const [selectedBiz,setSelectedBiz]=useState(null);
 
   const addToast=(msg,type="info")=>setToast({msg,type});
 
-  const handleSelectProduct=(p)=>{
-    setSelectedProduct(p);
-    setPage("product");
-  };
+  const handleSelectProduct=(p)=>{ setSelectedProduct(p); setPage("product"); };
+  const handleSelectBiz=(b)=>{ setSelectedBiz(b); setPage("biz"); };
 
   useEffect(()=>{
     const load=async()=>{
@@ -1007,13 +1207,14 @@ export default function App() {
 
   const renderPage=()=>{
     switch(page){
-      case "product": return selectedProduct ? <ProductDetail p={selectedProduct} setPage={setPage}/> : <Marketplace products={products} loading={loading} setPage={setPage} onSelect={handleSelectProduct}/>;
-      case "market": return <Marketplace products={products} loading={loading} setPage={setPage} onSelect={handleSelectProduct}/>;
-      case "fund":   return <FundPage businesses={businesses} loading={loading} setPage={setPage}/>;
-      case "sell":   return <SellForm addToast={addToast} setPage={setPage}/>;
-      case "apply":  return <SellForm addToast={addToast} setPage={setPage}/>;
-      case "dash":   return <Dashboard businesses={businesses} products={products} investments={investments}/>;
-      default:       return <Home setPage={setPage} businesses={businesses} products={products} onSelectProduct={handleSelectProduct}/>;
+      case "product": return selectedProduct?<ProductDetail p={selectedProduct} setPage={setPage}/>:<Marketplace products={products} loading={loading} setPage={setPage} onSelect={handleSelectProduct}/>;
+      case "biz":     return selectedBiz?<BizDetail b={selectedBiz} setPage={setPage} addToast={addToast}/>:<FundPage businesses={businesses} loading={loading} setPage={setPage} onSelect={handleSelectBiz}/>;
+      case "market":  return <Marketplace products={products} loading={loading} setPage={setPage} onSelect={handleSelectProduct}/>;
+      case "fund":    return <FundPage businesses={businesses} loading={loading} setPage={setPage} onSelect={handleSelectBiz}/>;
+      case "sell":    return <SellForm addToast={addToast} setPage={setPage}/>;
+      case "apply":   return <SellForm addToast={addToast} setPage={setPage}/>;
+      case "dash":    return <Dashboard businesses={businesses} products={products} investments={investments}/>;
+      default:        return <Home setPage={setPage} businesses={businesses} products={products} onSelectProduct={handleSelectProduct} onSelectBiz={handleSelectBiz}/>;
     }
   };
 
