@@ -537,6 +537,7 @@ function SellForm({addToast,setPage}) {
   const [productImages,setProductImages]=useState([]);
   const [productDocs,setProductDocs]=useState([]);
   const [businessDocs,setBusinessDocs]=useState([]);
+  const [projectImages,setProjectImages]=useState([]);
 
   const form=tab==="product"?pForm:fForm;
   const setF=tab==="product"?(k,v)=>setPForm(f=>({...f,[k]:v})):(k,v)=>setFForm(f=>({...f,[k]:v}));
@@ -618,8 +619,9 @@ function SellForm({addToast,setPage}) {
     if(!validateStep())return;
     setLoading(true);
     try{
-      let doc_urls=[];
+      let doc_urls=[],image_urls=[];
       if(businessDocs.length>0){doc_urls=await uploadFiles(businessDocs,"funding-docs");}
+      if(projectImages.length>0){image_urls=await uploadFiles(projectImages,"funding-images");}
       const hash=await hashContent(`${fForm.project_title}|${fForm.biz_desc}|${fForm.email}`);
       const estMonths=fForm.monthly_revenue&&fForm.revenue_share_pct&&fForm.funding_goal
         ?Math.ceil(Number(fForm.funding_goal)*Number(fForm.repayment_multiple)/(Number(fForm.monthly_revenue)*Number(fForm.revenue_share_pct)/100)):null;
@@ -631,7 +633,7 @@ function SellForm({addToast,setPage}) {
         funding_goal:Number(fForm.funding_goal), revenue_share_pct:Number(fForm.revenue_share_pct),
         repayment_multiple:Number(fForm.repayment_multiple), monthly_revenue:Number(fForm.monthly_revenue),
         use_of_funds:fForm.use_of_funds, estimated_repayment_months:estMonths,
-        ip_hash:hash, doc_urls:doc_urls.join(","), status:"pending",
+        ip_hash:hash, doc_urls:doc_urls.join(","), image_urls:image_urls.join(","), status:"pending",
         campaign_end_date:new Date(Date.now()+30*24*60*60*1000).toISOString().split("T")[0],
       });
       setDone("funding");addToast("Application submitted! 🌱","success");
@@ -801,7 +803,8 @@ function SellForm({addToast,setPage}) {
               <Field label="Current Monthly Revenue (R)">
                 <input type="number" value={fForm.monthly_revenue} onChange={e=>setFForm(f=>({...f,monthly_revenue:e.target.value}))} placeholder="15000" style={iStyle(false)}/>
               </Field>
-              <FileUpload label="Business Documents" accept=".pdf,.doc,.docx,image/*" multiple files={businessDocs} onChange={setBusinessDocs} hint="CIPC certificate, financials, ID documents — max 10MB each" maxMB={10}/>
+              <FileUpload label="Project Images" accept="image/*" multiple files={projectImages} onChange={setProjectImages} hint="Photos of your business, products, team, premises — JPG/PNG max 5MB each" maxMB={5}/>
+              <FileUpload label="Business Documents" accept=".pdf,.doc,.docx" multiple files={businessDocs} onChange={setBusinessDocs} hint="CIPC certificate, financials, business plan, ID — PDF/DOC max 10MB each" maxMB={10}/>
             </div>
             <div style={{display:"flex",justifyContent:"space-between",marginTop:24}}>
               <Btn onClick={()=>setStep(1)} variant="ghost">Back</Btn>
